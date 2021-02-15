@@ -59,7 +59,9 @@ def plot_mean_std_ts(data:dict, data_labels:pd.Series, rolling_window_size = 5, 
     num_classes = len(classes)
     num_axes = len(axes_labels)
 
-    fig, axes = plt.subplots(num_classes, num_axes, sharex=True, sharey=True, figsize=figsize)
+    cols_plot = num_axes
+    rows_plot = num_classes
+    fig, axes = plt.subplots(num_classes, num_axes, sharex=True, sharey=True, figsize=(figsize[0]*cols_plot, figsize[1]*rows_plot))
 
     for i in range(num_classes):
         for j in range(num_axes):
@@ -146,7 +148,9 @@ def plot_mean_std_ts(data:np.ndarray, data_labels:np.ndarray, rolling_window_siz
         print("Please set `axes_labels` and `colors` with a list of same length than dimensions of one time series")
         return 1
 
-    fig, axes = plt.subplots(num_classes, num_axes, sharex=True, sharey=True, figsize=figsize)
+    cols_plot = num_axes
+    rows_plot = num_classes
+    fig, axes = plt.subplots(num_classes, num_axes, sharex=True, sharey=True, figsize=(figsize[0]*cols_plot, figsize[1]*rows_plot))
 
     for i in range(num_classes):
         for j in range(num_axes):

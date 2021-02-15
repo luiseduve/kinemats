@@ -1,5 +1,32 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# =============================================================================
+# Created By  : Luis Quintero | luiseduve@hotmail.com
+# Created Date: 2021/01/08
+# =============================================================================
+"""
+Functions to do Quaternion Analysis
+
+These methods assume that the quaternion representation is arranged as:
+    [qw, qi, qj, qk]
+
+In addition, the euler representation assumes that the coordinate system is:
+    front=j, left=j, up=k.
+To change this coordinate system, use the parameters `axis_front`,`axis_left`,
+and `axis_up`.
+
+"""
+# =============================================================================
+# Imports
+# =============================================================================
+
 import numpy as np
 import math
+
+# =============================================================================
+# Main
+# =============================================================================
+
 
 def slerp(v0, v1, t_array):
     """Spherical linear interpolation.
@@ -62,12 +89,18 @@ def point_rotation_by_quaternion(point:list, q:list):
         result = result[1:]
     return result
 
-def quaternion_to_euler_list(quaternion:list, degrees = False):
+def quaternion_to_euler_list(quaternion:list, degrees = False, axis_qw=0, axis_front=1, axis_left=2, axis_up=3):
     """
-    Returns the euler representation of a quaternion [qr, qi, qj, qk] into
+    Returns the euler representation of a quaternion [qw, qi, qj, qk] into
         yaw     = [-pi, pi]
         pitch   = [-pi/2, pi/2]
         roll    = [-pi, pi]
+
+    If the quaternion is not in the order [qw, qi, qj, qk], you can specify these variables to set the index of the dimension:
+        - `axis_qw`     > Contains the scalar factor of the quaternion
+        - `axis_front`  > Contains the axis indicating the POSITIVE-FRONT in the coordinate reference system
+        - `axis_left`   > Contains the axis indicating the POSITIVE-LEFT in the coordinate reference system
+        - `axis_up`     > Contains the axis indicating the POSITIVE-UP in the coordinate reference system
 
     Based on Eq 2.9 of the Technical report in: 
     https://citeseerx.ist.psu.edu/viewdoc/download;jsessionid=08A583E84796E221D446200475B7841A?doi=10.1.1.468.5407&rep=rep1&type=pdf
@@ -78,10 +111,10 @@ def quaternion_to_euler_list(quaternion:list, degrees = False):
     :rtype: list of length 3
     """
 
-    qr = quaternion[0]
-    qi= quaternion[1]
-    qj = quaternion[2]
-    qk = quaternion[3]
+    qr = quaternion[axis_qw]
+    qi= quaternion[axis_front]
+    qj = quaternion[axis_left]
+    qk = quaternion[axis_up]
 
     # Squares of vector components to speed-up calculations
     sqi = qi*qi
@@ -165,10 +198,10 @@ def quaternion_mult(p, q):
         return None
 
     # Quaternion multiplication
-    result[...,0] = p[...,0]*q[...,0]-p[...,1]*q[...,1]-p[...,2]*q[...,2]-p[...,3]*q[...,3]
-    result[...,1] = p[...,0]*q[...,1]+p[...,1]*q[...,0]+p[...,2]*q[...,3]-p[...,3]*q[...,2]
-    result[...,2] = p[...,0]*q[...,2]-p[...,1]*q[...,3]+p[...,2]*q[...,0]+p[...,3]*q[...,1]
-    result[...,3] = p[...,0]*q[...,3]+p[...,1]*q[...,2]-p[...,2]*q[...,1]+p[...,3]*q[...,0]
+    result[...,0] = p[...,0]*q[...,0] - p[...,1]*q[...,1] - p[...,2]*q[...,2] - p[...,3]*q[...,3]
+    result[...,1] = p[...,0]*q[...,1] + p[...,1]*q[...,0] + p[...,2]*q[...,3] - p[...,3]*q[...,2]
+    result[...,2] = p[...,0]*q[...,2] - p[...,1]*q[...,3] + p[...,2]*q[...,0] + p[...,3]*q[...,1]
+    result[...,3] = p[...,0]*q[...,3] + p[...,1]*q[...,2] - p[...,2]*q[...,1] + p[...,3]*q[...,0]
 
     return result
 
@@ -189,7 +222,8 @@ def apply_quaternion_sequence(reference_point:np.ndarray, quaternions_array:np.n
     :param reference_point: 1D array with 3 or 4 elements containing the reference point.
         If there are 3 elements, it will be expanded as a quaternion as [0, px, py, pz]
     :type reference_point: numpy.ndarray
-    :param quaternions_array: Multi-dimensional array which number of elements in the last dimension is 4, corresponding to the set of unit quaternions that transform the `reference_point`
+    :param quaternions_array: Multi-dimensional array which number of elements in the last dimension is 4, 
+    corresponding to the set of unit quaternions that transform the `reference_point`
     :type quaternion: numpy.ndarray
     :return: An array of the same dimension than `quaternions_array` representing the rotated version
                 of `reference_point` for each position.
@@ -234,12 +268,18 @@ def apply_quaternion_sequence(reference_point:np.ndarray, quaternions_array:np.n
 
 ### CONVERT REPRESENTATIONS
 
-def quaternion_to_euler(quaternions:np.ndarray, degrees = False):
+def quaternion_to_euler(quaternions:np.ndarray, degrees = False, axis_qw=0, axis_front=1, axis_left=2, axis_up=3):
     """
-    Returns the euler representation of a quaternion [qr, qi, qj, qk] into
+    Returns the euler representation of a quaternion [qw, qi, qj, qk] into
         yaw     = [-pi, pi]
         pitch   = [-pi/2, pi/2]
         roll    = [-pi, pi]
+
+    If the quaternion is not in the order [qw, qi, qj, qk], you can specify these variables to set the index of the dimension:
+        - `axis_qw`     > Contains the scalar factor of the quaternion
+        - `axis_front`  > Contains the axis indicating the POSITIVE-FRONT in the coordinate reference system
+        - `axis_left`   > Contains the axis indicating the POSITIVE-LEFT in the coordinate reference system
+        - `axis_up`     > Contains the axis indicating the POSITIVE-UP in the coordinate reference system
 
     Based on Eq 2.9 of the Technical report in: 
     https://citeseerx.ist.psu.edu/viewdoc/download;jsessionid=08A583E84796E221D446200475B7841A?doi=10.1.1.468.5407&rep=rep1&type=pdf
@@ -251,14 +291,14 @@ def quaternion_to_euler(quaternions:np.ndarray, degrees = False):
     """
 
     if type(quaternions) in [list]:    
-        quaternion_to_euler_list(quaternions, degrees=degrees)
+        quaternion_to_euler_list(quaternions, degrees=degrees, axis_front=axis_front, axis_left=axis_left, axis_up=axis_up, axis_qw=axis_qw)
 
     print(quaternions.shape)
 
-    qr = quaternions[...,0]
-    qi = quaternions[...,1]
-    qj = quaternions[...,2]
-    qk = quaternions[...,3]
+    qr = quaternions[...,axis_qw]
+    qi = quaternions[...,axis_front]
+    qj = quaternions[...,axis_left]
+    qk = quaternions[...,axis_up]
 
     # Where to store the result
     result = np.empty(quaternions.shape)
@@ -271,12 +311,12 @@ def quaternion_to_euler(quaternions:np.ndarray, degrees = False):
     sqk = qk*qk
 
     ### Euler angles
-    # roll (x-axis rotation)
+    # roll (front-axis rotation)
     sinr_cosp = 2 * (qr * qi + qj * qk)
     cosr_cosp = 1 - 2 * (sqi + sqj)
     roll = np.arctan2(sinr_cosp, cosr_cosp)
 
-    # pitch (y-axis rotation)
+    # pitch (left-axis rotation)
     sinp = 2 * (qr * qj - qk * qi)
     pitch = np.arcsin(sinp)
     # Find and correct singularity at +/- 90 degrees to prevent GIMBAL LOCK. Happening at north/south pole.
@@ -286,7 +326,7 @@ def quaternion_to_euler(quaternions:np.ndarray, degrees = False):
         pitch[sliced_idx] = np.copysign(np.pi / 2, sinp[sliced_idx]) # use 90 degrees if out of range
         print("GIMBAL LOCK!! pos:", idx, " with quaternion", quaternions[sliced_idx], "replaced by", pitch[sliced_idx])
 
-    # yaw (z-axis rotation)
+    # yaw (up-axis rotation)
     siny_cosp = 2 * (qr * qk + qi * qj)
     cosy_cosp = 1 - 2 * (sqj + sqk)
     yaw = np.arctan2(siny_cosp, cosy_cosp)
