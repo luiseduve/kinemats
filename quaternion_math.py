@@ -11,7 +11,7 @@ These methods assume that the quaternion representation is arranged as:
     [qw, qi, qj, qk]
 
 In addition, the euler representation assumes that the coordinate system is:
-    front=j, left=j, up=k.
+    front=i, left=j, up=k.
 To change this coordinate system, use the parameters `axis_front`,`axis_left`,
 and `axis_up`.
 
