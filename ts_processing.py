@@ -19,6 +19,126 @@ def z_normalization(array, axis=0):
     result = np.nan_to_num((array-m)/sd)
     return result
 
+
+def extract_summary_statistics_with_non_overlapping_time_window(dataset_to_extract_features, timestamps, class_labels, time_limit_secs = (0,10), window_width_secs=1, dim_names=None):
+    """
+    Calculates the summary statistics along the specified axis in a multidimensional array
+    `dataset_to_extract_features` with shape = [idx_ts, time, dimensions]. By default it assumes `axis_time`=1
+
+    `timestamps` is a 1D numpy.array containing the sorted time values in seconds. Its length should be the same
+    than the `dataset_to_extract_features` in axis=1.
+
+    `class_labels` is a 1D numpy.array containing the class labels. Its length should be the same than the
+    `dataset_to_extract_features` in axis=0
+
+    `time_limit_secs` is a tuple of floats (t0,t1) containing the time in seconds from which the breakpoints will be searched.
+    The first interval will be generated from (t0) until (t0+window_width_secs), then subsequent breakpoints will be every 
+    `window_width_secs`, until reaching (t1).
+
+    `window_width_secs` define the space between breakpoints. Subintervals are generated based on these breakpoints, and features
+    are captured from these intervals.
+
+    NOTE: Make sure that the combination `starting_point` and `window_width_secs` will generate breakpoints 
+    that exist exactly in the array `timestamps`.
+
+    `dim_names` an array of strings containing the name of each dimension, otherwise automatic labels are created 
+    `["dim0","dim1",...,"dimP"]`. Make sure that the length of this array equals the number of dimensions in `dataset_to_extract_features`
+
+    Each interval will calculate the summary statistics:
+        - np.max
+        - np.min
+        - np.median
+        - np.mean
+        - np.std
+
+    Returns a pandas.DataFrame where the time series is expanded to a wide format, suitable for machine learning.
+    """
+    
+    M,N,P = dataset_to_extract_features.shape
+
+    if (timestamps.shape[0] != N):
+        raise ValueError("Please check that the length of `timestamps` equals the time dimension of `dataset_to_extract_features`")
+
+    if(dim_names is None):
+        dim_names = ["dim"+i for i in range(P)]
+    else:
+        if(len(dim_names) != P):
+            raise ValueError("The text labels in `dim_names` should match the number of dimensions")
+
+    # CONVENTIONS
+    AXIS_INSTANCE = 0
+    AXIS_TIME = 1
+    AXIS_DIMENSIONS = 2
+
+    # Starting and ending time to calculate features
+    starting_time= time_limit_secs[0]
+    ending_time = time_limit_secs[1]
+
+    # Extract features with the overlapping windows
+    time_breakpoints = np.arange(starting_time+window_width_secs, ending_time, window_width_secs)
+    print(f"Time breakpoints: {time_breakpoints}")
+    split_indices = np.searchsorted(timestamps, time_breakpoints)
+    print(f"Split indices: {time_breakpoints}")
+    intervals = np.split(dataset_to_extract_features, split_indices, axis = AXIS_TIME)
+    print(f"Number of intervals: {len(intervals)}")
+
+    # Create array of indices
+    time_indices = np.array(list(time_breakpoints)+[ending_time])
+
+    # Each `segment` contains a non-overlapping window, from which features can be extracted
+    # Create a new dataframe with the features
+    feature_functions = {
+        "max":np.max,
+        "min":np.min,
+        "median":np.median,
+        "avg":np.mean,
+        "std":np.std}
+
+    column_names = ["instanceId", "timeId", "timestamp"] + [ d+"_"+f for f in feature_functions.keys() for d in dim_names  ] + ["class"]
+
+    # Final array after applying processing window
+    df_features = [] # Placeholder for data with features
+
+    # Extract features from each interval
+    for s,segment in enumerate(intervals):
+        features_in_segment = []
+        for f,function in feature_functions.items():
+            # Append the execution of the function along the whole axis
+            features_in_segment.append( function(segment, axis=AXIS_TIME) ) # Returns an array (M,P)
+        
+        # Stack all features in a single array. Converts from many lists to a 3D array with less timepoints.
+        features_segm = np.concatenate(features_in_segment, axis=1) # Puts all the features along the dimensions P
+        df_features.append(features_segm)
+
+    df_features = np.stack(df_features, axis=AXIS_TIME) # Puts all the segments together along dimension N
+    print(f"DF features Shape: {df_features.shape}" )
+
+    ## Rearrange shape and concatenate to generate final 2D dataframe
+    df_features = np.reshape(df_features,(-1, df_features.shape[-1]), order='C') # Keep the last dimension, and expand the others.
+    # print(df_features.shape)
+
+    ### Repeat the values in the other columns to generate a wide format.
+    
+    userId = np.repeat(np.arange(dataset_to_extract_features.shape[AXIS_INSTANCE]), len(intervals)) # np.repeat([0,1,2],2) generates [0, 0, 1, 1, 2, 2]
+    userId = np.expand_dims(userId,axis=1)
+    # print(userId.shape)
+    tId = np.tile(np.arange(len(intervals)), dataset_to_extract_features.shape[AXIS_INSTANCE])  # np.tile([0,1,2],2) generates [0,1,2,0,1,2]
+    tId = np.expand_dims(tId,axis=1)
+    # print(tId.shape)
+    tstamp = np.tile(time_indices, dataset_to_extract_features.shape[AXIS_INSTANCE])
+    tstamp = np.expand_dims(tstamp,axis=1)
+    # print(tstamp.shape)
+    classLabels = np.repeat(class_labels, len(intervals))
+    classLabels = np.expand_dims(classLabels,axis=1)
+    # print(classLabels.shape)
+
+    # Generate dataframe
+    final_data_array = np.concatenate([userId, tId, tstamp, df_features, classLabels], axis=1)
+
+    return final_data_array, column_names
+    
+
+
 def pad_to_power_of_2(array, axis=1, pad_value=0):
     """ Returns an array with the length in the specified axis
     divisible by 2.

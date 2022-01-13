@@ -75,7 +75,7 @@ def plot_mean_std_ts(data:dict, data_labels:pd.Series, rolling_window_size = 5, 
             # Moving window with average to reduce noise.
             # Calculates mean and std among all time series for the specific class
             mean_ts = data_temp.rolling(rolling_window_size).mean().mean()
-            sd_ts   = 2*data_temp.rolling(rolling_window_size).mean().std()
+            sd_ts   = data_temp.rolling(rolling_window_size).mean().std()
 
             # Limits to fill are in the plot
             low_line  = (mean_ts - sd_ts)
@@ -163,8 +163,8 @@ def plot_mean_std_ts(data:np.ndarray, data_labels:np.ndarray, rolling_window_siz
 
             # Moving window with average to reduce noise.
             # Calculates mean and std among all time series for the specific class
-            mean_ts = data_temp.rolling(rolling_window_size).mean().mean()
-            sd_ts   = 2*data_temp.rolling(rolling_window_size).mean().std()
+            mean_ts = data_temp.rolling(rolling_window_size, axis=1).mean().mean()
+            sd_ts   = data_temp.rolling(rolling_window_size, axis=1).mean().std()
 
             # Limits to fill are in the plot
             low_line  = (mean_ts - sd_ts)
