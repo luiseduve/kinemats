@@ -16,12 +16,14 @@ on the scripts from: https://github.com/emteqlabs/demo-analysis-scripts
 # Imports
 # =============================================================================
 
+from ast import expr_context
 import sys, os
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 THIS_PATH = str(os.path.dirname(os.path.abspath(__file__)))
 
 # Import data manipulation libraries
 from copy import deepcopy
+from enum import Enum
 
 # Import scientific 
 import numpy as np
@@ -69,6 +71,22 @@ def is_immediate_child_path(path, parent):
             result = True
     return result
 
+
+
+class SessionSegment(Enum):
+    """
+    Enum to access the dictionary with the data per video
+    """
+    FastMovement = "fast_movement"
+    SlowMovement = "slow_movement"
+    video1 = "video_1"
+    video2 = "video_2"
+    video3 = "video_3"
+    video4 = "video_4"
+    video5 = "video_5"
+
+    def __str__(self):
+        return super().value.__str__()
 
 
 class DatasetEmteqLabsv2():
@@ -137,12 +155,13 @@ class DatasetEmteqLabsv2():
 
     # MAIN VARIABLES TO ACCESS DATA
     # Filenames
-    folder_data = ""    # Root folder of the original dataset
-    index_file = ""     # Filepath for the json file containing the index
+    folder_data_path = ""    # Root folder of the original dataset
+    index_file_path = ""     # Filepath for the json file containing the index
 
     # Data Variables
-    dataset_index = {}
-    events = {}
+    index = None            # Dictionary with the dataset's index
+    events = None           # Dictionary of Pandas DataFrame with Events
+    data = None             # Dictionary of Pandas DataFrame with Emteq Data
 
     def __init__(self, folder_path):
         """
@@ -153,34 +172,37 @@ class DatasetEmteqLabsv2():
         :param dictionary_path: Output path with directory from 
         :type dictionary_path: str
         """
-        self.folder_data = folder_path
+        self.folder_data_path = folder_path
+        self.index_file_path = os.path.join(self.folder_data_path, self.JSON_INDEX_FILENAME)
 
-    def create_index(self, json_path = ""):
+        self.load_or_create_index()
+        return
+
+    def load_or_create_index(self):
         """
         Analyzes the folder to see which files are available.
+        Enables access to the variable `self.index`, which contains a 
+        dictionary with path to key event and data files.
+        It also creates the json file at the root of the dataset.
 
-        :param json_path: Folder where the summary json will be stored
-        :type json_path: str
-        :return: Dictionary with the index and events of the experiment
-        :rtype: dict
+        :return: Nothing
+        :rtype: None
         """
-        
-        # Define the filename for the output index file
-        if (json_path == ""):
-            json_path = os.path.join(self.folder_data, self.JSON_INDEX_FILENAME)
-        else:
-            json_path = os.path.join(json_path, self.JSON_INDEX_FILENAME)
 
-        # Index filepath
-        self.index_file = json_path
-        print("Output json filepath: ", self.index_file)
+        # Entry condition
+        if(self.__load_index_file() is not None):
+            print("Index already exists: Loading from ", self.index_file_path)
+            return
+        
+        ##### Create index from the dataset folder
+        print("There is no index yet! Creating it in ", self.index_file_path)
     
         # Dictionary to store files
         files_index = {}
 
         # Look for zip files and extract all in the same directory
         counter_idx = 0
-        with os.scandir(self.folder_data) as it:
+        with os.scandir(self.folder_data_path) as it:
             for directory in it:
                 ### DIRECTORIES AS PARTICIPANTS
                 if( not directory.name.startswith(".") and directory.is_dir() ):                    
@@ -191,23 +213,25 @@ class DatasetEmteqLabsv2():
                     files_index[counter_idx] = deepcopy(self.PARTICIPANT_DATA_DICT)   # Empty dict for data
                     files_index[counter_idx]["folderid"] = directory.name.split("_")[1]
 
-                    print(f"\nDirectory >> {directory.name}")
+                    # print(f"\nDirectory >> {directory.name}")
 
                     # Store all the events in a new single .csv file
                     post_processed_events = pd.DataFrame( deepcopy(self.PROCESSED_EVENTS_DICT) )
-                    post_processed_events_filepath = os.path.join(self.folder_data, directory.name, self.POST_PROCESSED_EVENTS_FILENAME)
+                    post_processed_events_filepath = os.path.join(self.folder_data_path, directory.name, self.POST_PROCESSED_EVENTS_FILENAME)
 
                     # Scan participant's dir for specific files
-                    with os.scandir(os.path.join(self.folder_data, directory.name)) as it2:
+                    with os.scandir(os.path.join(self.folder_data_path, directory.name)) as it2:
                         for file in it2:
                             
                             ## The session is defined by the filename (without extension)
                             session_name = file.name.split(".")[0]
 
                             if(file.name.endswith(self.EVENTS_FILE_EXTENSION)):
-                                # # File is an EVENT. Read it right away
+                                # File is an EVENT. Read it right away
+
                                 # print(f"\t Event>> {session_name}")
-                                dict_events = self.__load_single_event_file_into_dict(os.path.join(self.folder_data, 
+
+                                dict_events = self.__load_single_event_file_into_dict(os.path.join(self.folder_data_path, 
                                                                                             directory.name, 
                                                                                             file.name), session_name)
                                 # Attach events to the file
@@ -230,19 +254,63 @@ class DatasetEmteqLabsv2():
         print(f"A total of {counter_idx} folders were found in the dataset")
 
         # Store the files in a JSON
-        utils.create_json(files_index, self.index_file)
+        utils.create_json(files_index, self.index_file_path)
 
-        print(f"Json file with index of the dataset was saved in {self.index_file}")
+        print(f"Json file with index of the dataset was saved in {self.index_file_path}")
 
         # Global variable for the index
-        self.dataset_index = files_index.copy()
+        self.index = files_index.copy()
+        return
 
-        return 0
+    def __load_index_file(self):
+        """
+        Loads the dictionary with the index file into memory.
+        If error, returns None
+        """
+        try:  
+            self.index = utils.load_json(self.index_file_path)
+            self.index = {int(k):v for k,v in self.index.items()}
+            return 0
+        except:
+            return None
 
-    def load_data_from_participant():
-        pass
+    def load_event_files(self):
+        """
+        Loads the dictionary containing the events from each participant.
+        Access all the events in a DataFrame from the participant 0 as:
+            - dataset_loader.events[0]
+        
+        :return: Events during all the experiment
+        :rtype: Pandas DataFrame
+        """
+        if self.index is None:
+            print("There is no index file loaded, loading index file...")
+            self.load_or_create_index()
+        else:
+            ### Load events in dictionary
+            self.events = {}
+            for id, evt_path in self.index.items():
+                # Iterate over participants
+                self.events[id] = pd.read_csv(os.path.join(self.folder_data_path, evt_path["events"]))
+        return
+
+    def load_data_from_participant(self, participant_idx:int, session_part:str):
+        """
+        Loads the dictionary containing the events from each participant.
+        Access all the events in a DataFrame from the participant 0 as:
+            - dataset_loader.events[0]
+        
+        :param participant_idx: Index of the participant (generally from 0 to 15)
+        :type participant_idx: int
+        :param session_part: Unique key indicating which session segment to access.
+        :type session_part: str
+        :return: Large dataframe containing all the physiological data as recorded by the EmteqMask
+        :rtype: Pandas DataFrame
+        """
+        return pd.read_csv( os.path.join(self.folder_data_path, self.index[participant_idx]["data"][session_part]), 
+                            error_bad_lines=False)
     
-    
+
     def __load_single_event_file_into_dict(self, event_filepath, session_name):
         """
         Loads a file with events into a structured dictionary
@@ -348,29 +416,17 @@ def help():
     return m
 
 def main(args):
-    input_folder_path = args.inputpath 
+    input_folder_path = args.datasetroot 
     print(f"Analyzing folder {input_folder_path}")
-
-    output_index_json = args.outindexfile if args.outindexfile else ""
-    print(f"Storing index in {output_index_json}")
-
-    data_loader_etl2 = DatasetEmteqLabsv2(os.path.join(THIS_PATH,input_folder_path))
-    data_loader_etl2.create_index(output_index_json)
-
     return
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("-i","--inputpath", type=str, required=True, help=f"Path to the dataset EMTEQ")
-    parser.add_argument("-o","--outindexfile", type=str, required=False, help=f"Path to store index")
+    parser.add_argument("-p","--datasetroot", type=str, required=True, help=f"Path to the dataset EMTEQ")
 
+    # args = parser.parse_args()
+    # main(args)
+
+    print(" >>>> TESTING MANUALLY")
     data_loader_etl2 = DatasetEmteqLabsv2(os.path.join(THIS_PATH,"../../datasets/ETL2/"))
-    data_loader_etl2.create_index()
 
-    # try:
-    #     args = parser.parse_args()
-    #     main(args)
-
-    # except Exception as e:
-    #     help()
-    #     print(f"{e}")
