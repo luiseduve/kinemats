@@ -105,6 +105,7 @@ class LoaderEmteqProMaskData():
     Class to load 
     """
     
+    """Columns found on the CSV file after converting with DabTools"""
     DATA_HEADER_CSV = [
                 "Frame","Time","Faceplate/FaceState","Faceplate/FitState",
                 "Emg/ContactStates[RightFrontalis]","Emg/Contact[RightFrontalis]","Emg/Raw[RightFrontalis]","Emg/RawLift[RightFrontalis]","Emg/Filtered[RightFrontalis]","Emg/Amplitude[RightFrontalis]",
@@ -127,15 +128,14 @@ class LoaderEmteqProMaskData():
     def load_single_csv_data(self, path_to_csv:str, 
                                     columns:list=None, 
                                     filter_wrong_timestamps:bool=True,
-                                    apply_reference_timestamp_J2000:bool = True,
-                                    apply_transformations_from_metadata:bool=False):
+                                    apply_reference_timestamp_J2000:bool = True):
         """
         Filepath to CSV file to load.
 
         :param path_to_csv: Full path to CSV file to be loaded
         :param columns: Subset of columns to extract. You may use `EmgPathMuscles` to generate the list
-        :param reference_timestamp_experiment: Reference timestamp assumed as t=0 (in J2000 timestamp) filtered from "#Time/Seconds.referenceOffset"
         :param filter_wrong_timestamps: Remove the rows that contain timestamps <0 and >last_timestamp_in_file
+        :param apply_reference_timestamp_J2000: Convert the timestamps from Unix to J2000 using metadata "#Time/Seconds.referenceOffset"
 
         :return: Data and metadata
         :rtype: A tuple with two pandas.DataFrames
@@ -143,6 +143,7 @@ class LoaderEmteqProMaskData():
 
         # Metadata with the character '#'
         metadata = pd.read_csv( path_to_csv, sep=",", engine="c", on_bad_lines='skip', header=0, names = ["metadata","value"])
+        metadata.set_index("metadata", inplace=True)
 
         # All lines that do not start with the character '#', therefore `comment="#"`
         data = pd.read_csv( path_to_csv, sep=",", comment="#", engine="c", header=0, names=self.DATA_HEADER_CSV)
@@ -159,12 +160,12 @@ class LoaderEmteqProMaskData():
         # Convert timestamps
         if (apply_reference_timestamp_J2000):
             # Extract from the metadata the J2000 reference value
-            _ref_timestamp_J2000 = float(metadata[ metadata["metadata"].str.startswith("#Time/Seconds.referenceOffset") ].value)
-            data.index += (_ref_timestamp_J2000 * 1e3) # Transform from secs to msec
+            _ref_timestamp_J2000 = float(metadata["#Time/Seconds.referenceOffset"].value)
+            data.index += (_ref_timestamp_J2000) # Transform from secs to msec
 
-        # Convert values based on metadata
-        if(apply_transformations_from_metadata):
-            data = self.normalize_from_metadata(data, metadata)
+        # TODO! # Convert values based on metadata
+        # if(apply_transformations_from_metadata):
+            # data = self.normalize_from_metadata(data, metadata)
 
         # Subselect some columns
         if columns is not None:
@@ -245,6 +246,7 @@ class DatasetEmteqLabsv2():
     ### CONSTANTS
     DATA_FILE_EXTENSION = ".csv"
     EVENTS_FILE_EXTENSION = ".json"
+    CONVERSION_TIMESTAMP_FROM_J2000_TO_UNIX = +946684800000 # in miliseconds
 
     # OUTPUT VALUES
     EVENTS_EXPERIMENT_FILENAME = "compiled_experimental_events.csv"
@@ -337,11 +339,12 @@ class DatasetEmteqLabsv2():
 
                                 # print(f"\t Event>> {session_name}")
 
-                                dict_events = self.__load_single_event_file_into_dict(os.path.join(self.folder_data_path, 
+                                this_event_df = self.__load_single_event_file_into_pandas(os.path.join(self.folder_data_path, 
                                                                                             directory.name, 
-                                                                                            file.name), session_name)
-                                # Attach events to the file
-                                this_event_df = pd.DataFrame(deepcopy(dict_events))
+                                                                                            file.name), 
+                                                                                        session_name,
+                                                                                        convert)
+
                                 compiled_events = pd.concat([compiled_events, this_event_df], ignore_index=True)
 
                             elif (file.name.endswith(self.DATA_FILE_EXTENSION) and (session_name in self.EXPERIMENT_SESSIONS_DICT.keys()) ):
@@ -350,22 +353,22 @@ class DatasetEmteqLabsv2():
                                 files_index[counter_idx]["data"][session_name] = os.path.join(directory.name, file.name)
 
                     # Separate in two files the experimental events and valence/arousal ratings
-                    experiment_events, exp_segment_timestamps, emotional_ratings = self.__separate_exp_stages_and_emotion_ratings(compiled_events)
+                    complete_experiment_events, experimental_segments, subjective_affect_ratings = self.__separate_exp_stages_and_emotion_ratings(compiled_events)
 
                     # Save the .csv files
-                    compiled_events_filepath = os.path.join(self.folder_data_path, directory.name, self.EVENTS_EXPERIMENT_FILENAME)
-                    experiment_events.to_csv(compiled_events_filepath, index=True)
-                    compiled_events_filepath = os.path.join(self.folder_data_path, directory.name, self.SEGMENT_TIMESTAMPS_EXPERIMENT_FILENAME)
-                    exp_segment_timestamps.to_csv(compiled_events_filepath, index=True)
-                    compiled_emotions_filepath = os.path.join(self.folder_data_path, directory.name, self.EMOTIONS_SUBJECTIVE_FILENAME)
-                    emotional_ratings.to_csv(compiled_emotions_filepath, index=True)
+                    filepath_temp = os.path.join(self.folder_data_path, directory.name, self.EVENTS_EXPERIMENT_FILENAME)
+                    complete_experiment_events.to_csv(filepath_temp, index=True)
+                    filepath_temp = os.path.join(self.folder_data_path, directory.name, self.SEGMENT_TIMESTAMPS_EXPERIMENT_FILENAME)
+                    experimental_segments.to_csv(filepath_temp, index=True)
+                    filepath_temp = os.path.join(self.folder_data_path, directory.name, self.EMOTIONS_SUBJECTIVE_FILENAME)
+                    subjective_affect_ratings.to_csv(filepath_temp, index=True)
 
                     # Add to the index the separate files.
                     files_index[counter_idx]["events"] = os.path.join(directory.name, self.EVENTS_EXPERIMENT_FILENAME)
                     files_index[counter_idx]["segments"] = os.path.join(directory.name, self.SEGMENT_TIMESTAMPS_EXPERIMENT_FILENAME)
                     files_index[counter_idx]["emotions"] = os.path.join(directory.name, self.EMOTIONS_SUBJECTIVE_FILENAME)
 
-                    print(f"\t Events compiled in {compiled_events_filepath}")
+                    print(f"\t Events compiled in {filepath_temp}")
 
                     # Prepare for next data
                     counter_idx = counter_idx + 1
@@ -457,7 +460,7 @@ class DatasetEmteqLabsv2():
                                 participant_idx:int, 
                                 session_part:str, 
                                 columns:list=None, 
-                                normalize_timestamps:bool = True
+                                use_J2000_timestamps:bool = False
                                 ):
         """
         Loads the recorded data from a specific participant and a given 
@@ -466,6 +469,7 @@ class DatasetEmteqLabsv2():
         :param participant_idx: Index of the participant (generally from 0 to 15)
         :param session_part: Unique key indicating which session segment to access. See `SessionSegment(Enum)`
         :param columns: List of columns to return from the dataset
+        :param use_J2000_timestamps: Convert from Unix to J2000 format (useful to match with Event logs)
         :return: Tuple of two dataframes containing (data, metadata)
         :rtype: Tuple of two pandas DataFrames
         """
@@ -475,12 +479,13 @@ class DatasetEmteqLabsv2():
 
         return self.loader_emteq_csv.load_single_csv_data(full_path_to_file, 
                                                             columns = columns,
-                                                            apply_reference_timestamp_J2000 = normalize_timestamps)
+                                                            apply_reference_timestamp_J2000 = use_J2000_timestamps)
     
 
-    def __load_single_event_file_into_dict(self, 
+    def __load_single_event_file_into_pandas(self, 
                         event_filepath, 
-                        session_name):
+                        session_name,
+                        convert_J2000_to_unix_seconds:bool = True):
         """
         Loads a file with events into a structured dictionary
         """
@@ -489,6 +494,7 @@ class DatasetEmteqLabsv2():
         # Transform to simpler dict compatible with Pandas
         organized_dict = deepcopy(self.PROCESSED_EVENTS_DICT)
 
+        # Convert each key:value into an array with column names
         for event_info in dict_from_json:
             for k,v in event_info.items():
                 organized_dict[k].append(v)
@@ -496,7 +502,14 @@ class DatasetEmteqLabsv2():
         # Repeat the session name as much as needed. It facilitates filtering
         organized_dict["Session"] = [session_name] * len(organized_dict["Timestamp"])
 
-        return organized_dict.copy()
+        # Create dataframe
+        df = pd.DataFrame(deepcopy(organized_dict.copy()))
+
+        # Convert from J2000 (in miliseconds) to Unix (in seconds)
+        if(convert_J2000_to_unix_seconds):
+            df["Timestamp"] = ( df["Timestamp"] + self.CONVERSION_TIMESTAMP_FROM_J2000_TO_UNIX ) / 1e3
+
+        return df
 
     def __separate_exp_stages_and_emotion_ratings(self, compiled_events_dataframe:pd.DataFrame):
         """
@@ -510,21 +523,48 @@ class DatasetEmteqLabsv2():
         QUERY_FILTER = (df["Event"].str.startswith("Valence"))
 
         ########### All experimental stages in a single dataset
-        experimental_events = df[ ~QUERY_FILTER ]
+        all_non_affect_events = df[ ~QUERY_FILTER ]
 
-        experimental_events.set_index("Timestamp", inplace=True)
-        experimental_events.index.rename("Time", inplace=True)
+        all_non_affect_events.set_index("Timestamp", inplace=True)
+        all_non_affect_events.index.rename("Time", inplace=True)
         
-        ########### Extract the starting time of each of the experimental stage. To be used as class labels for the TS
+        timestamped_start_end_segments = self.__process_long_events_to_extract_experimental_segments(all_non_affect_events)
 
-        # Find the events that mention start of data recording
-        EVENT_TEXT_SEQUENCE = "Category sequence:"
-        keys_containing_sync_event = experimental_events.Event.str.startswith(EVENT_TEXT_SEQUENCE)
-        cat_sequence = experimental_events[ keys_containing_sync_event ].iloc[0] # Choose first event
-        cat_sequence.Event.split(":")[1].split(",")
+        #################################
+        ########### Subjective emotions are Valence/Arousal ratings
+        #################################
+        subjective_affect_data = df[ QUERY_FILTER ]
+
+        # Change index
+        subjective_affect_data.set_index("Timestamp", inplace=True)
+        subjective_affect_data.index.rename("Time", inplace=True)
+
+        # Extract the emotional data from the string. First splitting by "," and then by ":" every two values
+        emotions = subjective_affect_data["Event"].str.split(",").apply(lambda x: [v.split(":")[1] for v in x])
+        # The resulting frame is a Series of Lists. Transform into DataFrame
+        emotions = pd.DataFrame(emotions.tolist(), 
+                                index=subjective_affect_data.index, 
+                                columns=["Valence","Arousal","RawX","RawY"])
+
+        # Join with original timestamp and session segment.
+        subjective_affect_data = subjective_affect_data.join(emotions)
+        subjective_affect_data.drop(["Event"], axis=1, inplace=True)
+
+        return all_non_affect_events, timestamped_start_end_segments, subjective_affect_data
+
+
+    def __process_long_events_to_extract_experimental_segments(self, experimental_events):
+        """
+        Extract the starting time and end time of each of the experimental stages. 
+        To be used as class labels for the TS
+        """
+
+        VIDEO_ID_FOR_RESTING_VIDEO = -1
+        KEYWORD_SEGMENT_BEGINNING = "Start"
+        KEYWORD_SEGMENT_END = "End"
 
         # All experimental stages start with an Event saying "Playing ___"
-        events_filter = experimental_events[ experimental_events.Event.str.startswith( "Playing" ) ]
+        events_filter = experimental_events[experimental_events.Event.str.contains("Playing")]
         
         # Find the video file corresponding to each emotion. `video_2`, `video_3`, or `video_4`
         video_label_negative = events_filter[ events_filter.Event.str.contains("Category name: Negative") ].Session.values[0]
@@ -533,38 +573,48 @@ class DatasetEmteqLabsv2():
 
         # Dict to map video filename to emotion category
         map_session_to_emotion = {
-                                    video_label_negative: "Negative",
-                                    video_label_neutral: "Neutral",
-                                    video_label_positive: "Positive",
+                                    "fast_movement":"fast_movement",
+                                    "slow_movement":"slow_movement",
+                                    # Randomized order
+                                    video_label_negative: "VideoNegative",
+                                    video_label_neutral: "VideoNeutral",
+                                    video_label_positive: "VideoPositive",
+                                    # Test videos
+                                    "video_1":"video_1",
+                                    "video_5":"video_5",
                                 }
 
-        # Copy of the dataframe with video indices
-        timestamps_beginning_videos = events_filter [events_filter.Event.str.startswith("Playing video number:")].copy()
+        #### Find events related to the beginning of each video or rest stage.
+        tstamps_start_videos = events_filter[events_filter.Event.str.startswith("Playing video number:")].copy()
+        tstamps_start_videos["Segment"] = tstamps_start_videos["Session"].map(map_session_to_emotion) 
+        tstamps_start_videos["VideoId"] = tstamps_start_videos.Event.str.split(":").apply( lambda x: int(x[1]))
+        tstamps_start_videos["Trigger"] = KEYWORD_SEGMENT_BEGINNING
 
-        # Assign the emotion category based on the video file
-        timestamps_beginning_videos["Emotion"] = timestamps_beginning_videos["Session"].map(map_session_to_emotion) 
+        tstamps_start_rest = events_filter [events_filter.Event.str.contains("Playing rest video")].copy()
+        tstamps_start_rest["Segment"] = tstamps_start_rest["Session"].map(map_session_to_emotion)
+        tstamps_start_rest["VideoId"] = VIDEO_ID_FOR_RESTING_VIDEO
+        tstamps_start_rest["Trigger"] = KEYWORD_SEGMENT_BEGINNING
+
+        ### Find events related to the end of each video, or rest stage
+        events_filter_end = experimental_events[ experimental_events.Event.str.contains("Finished playing") ]
+
+        tstamps_end_videos = events_filter_end [events_filter_end.Event.str.startswith("Finished playing video number:")].copy()
+        tstamps_end_videos["Segment"] = tstamps_end_videos["Session"].map(map_session_to_emotion)
+        tstamps_end_videos["VideoId"] = tstamps_end_videos.Event.str.split(":").apply( lambda x: int(x[1]))
+        tstamps_end_videos["Trigger"] = KEYWORD_SEGMENT_END
+
+        tstamps_end_rest = events_filter_end [events_filter_end.Event.str.startswith("Finished playing rest video")].copy()
+        tstamps_end_rest["Segment"] = tstamps_end_rest["Session"].map(map_session_to_emotion)
+        tstamps_end_rest["VideoId"] = VIDEO_ID_FOR_RESTING_VIDEO
+        tstamps_end_rest["Trigger"] = KEYWORD_SEGMENT_END
 
         # Find the video Id playing per each group
-        timestamps_beginning_videos["VideoId"] = timestamps_beginning_videos.Event.str.split(":").apply( lambda x: int(x[1]))
-        timestamps_beginning_videos.drop(["Event"], axis=1, inplace=True)
+        tstamps_total_segments = pd.concat([tstamps_start_videos,tstamps_start_rest,tstamps_end_videos,tstamps_end_rest])
+        tstamps_total_segments.drop("Event", axis=1, inplace=True)
+        tstamps_total_segments.sort_index(inplace=True)
+        # tstamps_total_segments.reset_index(inplace=True) ## Do not uncomment, loading scripts always look for "Time" as index
 
-        ########### Subjective emotions are Valence/Arousal ratings
-        subjective_emotions_data = df[ QUERY_FILTER ]
-
-        # Change index
-        subjective_emotions_data.set_index("Timestamp", inplace=True)
-        subjective_emotions_data.index.rename("Time", inplace=True)
-
-        # Extract the emotional data from the string. First splitting by "," and then by ":" every two values
-        emotions = subjective_emotions_data["Event"].str.split(",").apply(lambda x: [v.split(":")[1] for v in x])
-        # The resulting frame is a Series of Lists. Transform into DataFrame
-        emotions = pd.DataFrame(emotions.tolist(), index=subjective_emotions_data.index, columns=["Valence","Arousal","RawX","RawY"])
-
-        # Join with original timestamp and session segment.
-        subjective_emotions_data = subjective_emotions_data.join(emotions)
-        subjective_emotions_data.drop(["Event"], axis=1, inplace=True)
-
-        return experimental_events, timestamps_beginning_videos, subjective_emotions_data
+        return tstamps_total_segments
 
 
     ########################################### OLD METHODS TO BE REPLACED
