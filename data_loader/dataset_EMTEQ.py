@@ -90,7 +90,7 @@ def GetColnamesBasicsNonEmg():
     DATA_HEADSER_NON_EMG_BASICS = [
                                     #"Time",    # Included by default in `load_single_csv_data()`
                                     # #"Frame",
-                                    "Faceplate/FaceState","Faceplate/FitState",
+                                    # "Faceplate/FaceState","Faceplate/FitState",
                                     "HeartRate/Average","Ppg/Raw.ppg",#"Ppg/Raw.proximity",
                                     "Accelerometer/Raw.x","Accelerometer/Raw.y","Accelerometer/Raw.z",
                                     #"Magnetometer/Raw.x","Magnetometer/Raw.y","Magnetometer/Raw.z",
@@ -128,7 +128,8 @@ class LoaderEmteqProMaskData():
     def load_single_csv_data(self, path_to_csv:str, 
                                     columns:list=None, 
                                     filter_wrong_timestamps:bool=True,
-                                    apply_reference_timestamp_J2000:bool = True):
+                                    apply_reference_timestamp_J2000:bool = True,
+                                    filter_duplicates:bool = True):
         """
         Filepath to CSV file to load.
 
@@ -136,6 +137,7 @@ class LoaderEmteqProMaskData():
         :param columns: Subset of columns to extract. You may use `EmgPathMuscles` to generate the list
         :param filter_wrong_timestamps: Remove the rows that contain timestamps <0 and >last_timestamp_in_file
         :param apply_reference_timestamp_J2000: Convert the timestamps from Unix to J2000 using metadata "#Time/Seconds.referenceOffset"
+        :param filter_duplicates: Removes the duplicate rows from the pandas DataFrame, exclusing the timestamps in the index.
 
         :return: Data and metadata
         :rtype: A tuple with two pandas.DataFrames
@@ -144,10 +146,14 @@ class LoaderEmteqProMaskData():
         # Metadata with the character '#'
         metadata = pd.read_csv( path_to_csv, sep=",", engine="c", on_bad_lines='skip', header=0, names = ["metadata","value"])
         metadata.set_index("metadata", inplace=True)
-
+        
         # All lines that do not start with the character '#', therefore `comment="#"`
         data = pd.read_csv( path_to_csv, sep=",", comment="#", engine="c", header=0, names=self.DATA_HEADER_CSV)
 
+        # Subselect some columns
+        if columns is not None:
+            data = data[ ["Time"] + columns ]
+        
         # Filter data with invalid timestamps
         if(filter_wrong_timestamps):
             # Some timestamps carry over wrong timestamps due to high-freq data, 
@@ -163,13 +169,13 @@ class LoaderEmteqProMaskData():
             _ref_timestamp_J2000 = float(metadata["#Time/Seconds.referenceOffset"].value)
             data.index += (_ref_timestamp_J2000) # Transform from secs to msec
 
+        # Most data should contain duplicates if the raw data @2KHz are not chosen
+        if filter_duplicates:
+            data.drop_duplicates(keep="first", inplace=True)
+
         # TODO! # Convert values based on metadata
         # if(apply_transformations_from_metadata):
             # data = self.normalize_from_metadata(data, metadata)
-
-        # Subselect some columns
-        if columns is not None:
-            data = data[ columns ]
 
         return data, metadata
 
@@ -454,6 +460,7 @@ class DatasetEmteqLabsv2():
             for id, evt_path in self.index.items():
                 # Iterate over participants
                 self.emotions[id] = pd.read_csv(os.path.join(self.folder_data_path, evt_path["emotions"]), index_col="Time")
+                self.emotions[id].drop_duplicates(keep="first", inplace=True)
         return
 
     def load_data_from_participant(self, 
