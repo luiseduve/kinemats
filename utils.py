@@ -11,7 +11,7 @@ def check_or_create_folder(filename):
     return
 
 # %%
-def create_json(dictionary, json_path = "folder_tree.json"):
+def create_json(dictionary, json_path = "folder_tree.json", pretty=False):
     """
     Create a structured dictionary with the filenames of the
     files where the main data is located within the compressed dataset.
@@ -23,7 +23,10 @@ def create_json(dictionary, json_path = "folder_tree.json"):
     """
     check_or_create_folder(json_path)
     with open(json_path, "w") as json_file:
-        json.dump(dictionary, json_file)
+        if (pretty):
+            json.dump(dictionary, json_file, indent=4)
+        else:
+            json.dump(dictionary, json_file)
         print("JSON file was created in", json_path)
         return json_file
 
@@ -38,9 +41,8 @@ def load_json(json_path = "folder_tree.json"):
     :rtype: dict
     """
     with open(json_path, "r") as json_file:
-        files_index = json.load(json_file)
-        # Check number of users loaded
-        return files_index
+        json_data = json.load(json_file)
+        return json_data
 
 
 # %%
