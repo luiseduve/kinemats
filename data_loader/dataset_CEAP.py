@@ -321,14 +321,28 @@ class DatasetCEAP():
                     ## End of a single sample
                 ## End of all samples for a feature
                 df_this_feature = pd.DataFrame(df_this_feature)
-                if(self.K_TIMESTAMP in df_this_feature.columns):    # For two participants, the IBI data is not available
-                    df_this_feature.set_index(self.K_TIMESTAMP, inplace=True)
-                # Add to video data
-                df_this_video_group = df_this_feature if (df_this_video_group is None) else df_this_video_group.join(df_this_feature.copy(deep=True), how="outer")
-                    
+                # Process if the resulting feature has the column "TimeStamp". E.g, IBI data is not present in some participants and should not be included
+                if(self.K_TIMESTAMP in df_this_feature.columns):
+                    # df_this_feature.set_index(self.K_TIMESTAMP, inplace=True) # Not needed anymore, merging without being the index
+                    # Add to main video data
+                    df_this_video_group = df_this_feature if (df_this_video_group is None) else df_this_video_group.merge(df_this_feature, how="outer", on=self.K_TIMESTAMP, sort=True)
+                    """ EXAMPLE of merge function
+                    # The desired behavior is that it will add columns to existing timestamps,
+                    # while adding TimeStamps if they do not exist. This is mostly useful for 
+                    # `Raw` data because they contain variables with different sampling frequency
+                    df1 = pd.DataFrame({'TimeStamp': [1.5, 1.8], 'b': [1, 2]})
+                    df2 = pd.DataFrame({'TimeStamp': [1.5, 1.65], 'c': [3, 4]})
+                    df1.merge(df2, how='outer', on='TimeStamp', sort=True)
+                    """
+                
+                # print(f"{ft_group_name} - Size: {df_this_feature.shape}")
+                # print(df_this_feature)
+                # if ft_group_name=="BVP_RawData":
+                #     break
+                
             ## End of all features in a video
             df_this_video_group.insert(0, column=self.K_VIDEO, value=video_id)
-            df_this_video_group.reset_index(inplace=True)
+            # df_this_video_group.reset_index(inplace=True)
 
             df_data = df_this_video_group if (df_data is None) else pd.concat([df_data, df_this_video_group.copy(deep=True)], axis=0, ignore_index=True)
 
@@ -336,6 +350,33 @@ class DatasetCEAP():
         df_data.insert(0, column=self.K_PARTICIPANT, value=participant_id)
         
         return df_data
+
+    def load_data_from_participant(self, 
+                                participant_idx:int, 
+                                data_type:str = "Annotations", 
+                                processing_level:str = "Raw",
+                                ):
+        """
+        Loads the recorded data from a specific participant and a given 
+        experiment session segment.
+        
+        :param participant_idx: Index of the participant (generally from 1 to 32)
+        :param data_type: String denoting the type of data to load:  ["Annotations", "Behavior", "Physio"]
+        :param processing_level: String denoting the level of processing to be retrieved: ["Raw", "Transformed", "Frame"]
+        :rtype: A single pandas DataFrame with the loaded data
+        """
+        path_to_requested_file = self.index["data"][data_type][processing_level][str(participant_idx)]
+        print("Loading from: ", path_to_requested_file)
+
+        df_data = self._load_json_data_from_filepath(path_to_requested_file)
+        df_data.insert(0, column="processing_level", value=processing_level)
+        df_data.insert(0, column="data_type", value=data_type)
+
+        if(df_data[self.K_PARTICIPANT].iloc[0] != participant_idx):
+            raise ValueError(f"The participant ID is different between the name of the file and the content for file {path_to_requested_file}")
+
+        return df_data.copy(deep=True)
+
 
     def load_data_from_participant(self, 
                                 participant_idx:int, 
