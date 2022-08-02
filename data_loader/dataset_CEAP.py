@@ -324,7 +324,7 @@ class DatasetCEAP():
                 if(self.K_TIMESTAMP in df_this_feature.columns):    # For two participants, the IBI data is not available
                     df_this_feature.set_index(self.K_TIMESTAMP, inplace=True)
                 # Add to video data
-                df_this_video_group = df_this_feature if (df_this_video_group is None) else df_this_video_group.join(df_this_feature.copy(deep=True))
+                df_this_video_group = df_this_feature if (df_this_video_group is None) else df_this_video_group.join(df_this_feature.copy(deep=True), how="outer")
                     
             ## End of all features in a video
             df_this_video_group.insert(0, column=self.K_VIDEO, value=video_id)
