@@ -376,35 +376,7 @@ class DatasetCEAP():
             raise ValueError(f"The participant ID is different between the name of the file and the content for file {path_to_requested_file}")
 
         return df_data.copy(deep=True)
-
-
-    def load_data_from_participant(self, 
-                                participant_idx:int, 
-                                data_type:str = "Annotations", 
-                                processing_level:str = "Raw",
-                                ):
-        """
-        Loads the recorded data from a specific participant and a given 
-        experiment session segment.
         
-        :param participant_idx: Index of the participant (generally from 1 to 32)
-        :param data_type: String denoting the type of data to load:  ["Annotations", "Behavior", "Physio"]
-        :param processing_level: String denoting the level of processing to be retrieved: ["Raw", "Transformed", "Frame"]
-        :rtype: A single pandas DataFrame with the loaded data
-        """
-        path_to_requested_file = self.index["data"][data_type][processing_level][str(participant_idx)]
-        print("Loading from: ", path_to_requested_file)
-
-        df_data = self._load_json_data_from_filepath(path_to_requested_file)
-        df_data.insert(0, column="processing_level", value=processing_level)
-        df_data.insert(0, column="data_type", value=data_type)
-
-        if(df_data[self.K_PARTICIPANT].iloc[0] != participant_idx):
-            raise ValueError(f"The participant ID is different between the name of the file and the content for file {path_to_requested_file}")
-
-        return df_data.copy(deep=True)
-
-
 
 ############################
 #### ENTRY POINT
